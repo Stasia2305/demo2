@@ -87,6 +87,12 @@
             <version>2.0.16</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Microsoft SQL Server JDBC driver to support dk.easv.mytunes.dal.DatabaseConnection -->
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>12.8.1.jre8</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -109,7 +115,7 @@
                         <!-- Default configuration for running with: mvn clean javafx:run -->
                         <id>default-cli</id>
                         <configuration>
-                            <mainClass>com.example.demo2/com.example.demo2.HelloApplication</mainClass>
+                            <mainClass>com.example.demo2.Launcher</mainClass>
                             <launcher>app</launcher>
                             <jlinkZipName>app</jlinkZipName>
                             <jlinkImageName>app</jlinkImageName>
