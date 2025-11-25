@@ -12,9 +12,9 @@ public class HelloApplication extends Application {
     @Override
     public void start(Stage stage) throws IOException {
         try {
-            FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("hello-view.fxml"));
-            Scene scene = new Scene(fxmlLoader.load(), 320, 240);
-            stage.setTitle("Tunes");
+            FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("mytunes-view.fxml"));
+            Scene scene = new Scene(fxmlLoader.load(), 1100, 650);
+            stage.setTitle("MyTunes");
             stage.setScene(scene);
             stage.show();
         } catch (Exception ex) {
