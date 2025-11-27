@@ -4,6 +4,9 @@ import com.example.demo2.bll.PlaylistService;
 import com.example.demo2.bll.SongService;
 import com.example.demo2.entities.Playlist;
 import com.example.demo2.entities.Song;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -13,8 +16,10 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
 import javafx.stage.FileChooser;
 import javafx.scene.layout.GridPane;
+import javafx.util.Duration;
 
 import java.io.File;
 import java.sql.SQLException;
@@ -29,6 +34,10 @@ import java.util.function.IntConsumer;
 public class MyTunesController {
     // Top toolbar
     @FXML private Label statusLabel;
+    @FXML private MediaView mediaView;
+    @FXML private Slider progressSlider;
+    @FXML private Label currentTimeLabel;
+    @FXML private Label totalTimeLabel;
 
     // Left: playlists
     @FXML private ListView<Playlist> playlistList;
@@ -55,6 +64,8 @@ public class MyTunesController {
     private MediaPlayer mediaPlayer;
     private ObservableList<Song> currentQueue = FXCollections.observableArrayList();
     private int currentIndex = -1;
+    private Timeline progressTimeline;
+    private boolean isSeekingFromUser = false;
 
     @FXML
     private void initialize() {
@@ -67,6 +78,18 @@ public class MyTunesController {
 
         playlistList.setItems(playlists);
         playlistSongsList.setItems(songsInSelectedPlaylist);
+
+        // Setup progress slider
+        progressSlider.setMin(0);
+        progressSlider.setMax(100);
+        progressSlider.setValue(0);
+        progressSlider.setOnMousePressed(e -> isSeekingFromUser = true);
+        progressSlider.setOnMouseReleased(e -> {
+            isSeekingFromUser = false;
+            if (mediaPlayer != null && mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING || mediaPlayer.getStatus() == MediaPlayer.Status.PAUSED) {
+                mediaPlayer.seek(Duration.millis(progressSlider.getValue() * mediaPlayer.getTotalDuration().toMillis() / 100.0));
+            }
+        });
 
         // Selection changes
         playlistList.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
@@ -158,6 +181,12 @@ public class MyTunesController {
             mediaPlayer.stop();
             statusLabel.setText("Stopped");
         }
+        if (progressTimeline != null) {
+            progressTimeline.stop();
+        }
+        progressSlider.setValue(0);
+        currentTimeLabel.setText("00:00");
+        totalTimeLabel.setText("00:00");
     }
 
     private void playFromTable(Song s) { playQueue(songs, songs.indexOf(s)); }
@@ -178,14 +207,21 @@ public class MyTunesController {
         Song s = currentQueue.get(currentIndex);
         try {
             if (mediaPlayer != null) mediaPlayer.stop();
+            if (progressTimeline != null) progressTimeline.stop();
+            
             Media media = new Media(new File(s.getFilePath()).toURI().toString());
             mediaPlayer = new MediaPlayer(media);
+            mediaView.setMediaPlayer(mediaPlayer);
+            
             statusLabel.setText("Loading: " + s.getTitle());
             mediaPlayer.setOnReady(() -> {
                 statusLabel.setText("Playing: " + s.getTitle());
+                totalTimeLabel.setText(formatDuration((int) media.getDuration().toSeconds()));
                 mediaPlayer.play();
+                startProgressTracking();
             });
             mediaPlayer.setOnEndOfMedia(() -> {
+                if (progressTimeline != null) progressTimeline.stop();
                 currentIndex++;
                 playCurrent();
             });
@@ -193,6 +229,27 @@ public class MyTunesController {
         } catch (Exception ex) {
             statusLabel.setText("Could not play: " + s.getTitle());
         }
+    }
+
+    private void startProgressTracking() {
+        if (progressTimeline != null) progressTimeline.stop();
+        progressTimeline = new Timeline(new KeyFrame(Duration.millis(100), e -> updateProgress()));
+        progressTimeline.setCycleCount(Animation.INDEFINITE);
+        progressTimeline.play();
+    }
+
+    private void updateProgress() {
+        if (mediaPlayer == null || mediaPlayer.getTotalDuration() == null || mediaPlayer.getTotalDuration().toMillis() <= 0) {
+            return;
+        }
+        double currentMs = mediaPlayer.getCurrentTime().toMillis();
+        double totalMs = mediaPlayer.getTotalDuration().toMillis();
+        double progress = (currentMs / totalMs) * 100.0;
+        
+        if (!isSeekingFromUser) {
+            progressSlider.setValue(progress);
+        }
+        currentTimeLabel.setText(formatDuration((int) (currentMs / 1000)));
     }
 
     // Playlists
@@ -333,11 +390,13 @@ public class MyTunesController {
         TextField artist = new TextField(editing != null ? editing.getArtist() : "");
         artist.setPromptText("Artist");
         TextField path = new TextField(editing != null ? editing.getFilePath() : "");
-        path.setPromptText("File path (.mp3/.wav)");
+        path.setPromptText("File path (.mp3/.wav/.mp4)");
         Button choose = new Button("Choose...");
         choose.setOnAction(e -> {
             FileChooser ch = new FileChooser();
+            ch.getExtensionFilters().add(new FileChooser.ExtensionFilter("Media", "*.mp3", "*.wav", "*.m4a", "*.mp4"));
             ch.getExtensionFilters().add(new FileChooser.ExtensionFilter("Audio", "*.mp3", "*.wav", "*.m4a"));
+            ch.getExtensionFilters().add(new FileChooser.ExtensionFilter("Video", "*.mp4"));
             File f = ch.showOpenDialog(dialog.getDialogPane().getScene().getWindow());
             if (f != null) path.setText(f.getAbsolutePath());
         });

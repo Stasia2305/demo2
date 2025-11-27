@@ -8,10 +8,15 @@ import java.util.List;
 
 /**
  * DAO for CRUD operations on songs table.
+ * Falls back to in-memory storage when database is unavailable.
  */
 public class SongDAO {
+    private final InMemoryStore memoryStore = InMemoryStore.getInstance();
 
     public List<Song> findAll() throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.getAllSongs();
+        }
         String sql = "SELECT id, title, artist, duration_seconds, file_path FROM songs ORDER BY title COLLATE NOCASE";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql);
@@ -19,10 +24,15 @@ public class SongDAO {
             List<Song> list = new ArrayList<>();
             while (rs.next()) list.add(map(rs));
             return list;
+        } catch (SQLException e) {
+            return memoryStore.getAllSongs();
         }
     }
 
     public List<Song> search(String query) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.searchSongs(query);
+        }
         String like = "%" + query + "%";
         String sql = "SELECT id, title, artist, duration_seconds, file_path FROM songs " +
                 "WHERE title LIKE ? OR artist LIKE ? ORDER BY title COLLATE NOCASE";
@@ -35,10 +45,15 @@ public class SongDAO {
                 while (rs.next()) list.add(map(rs));
                 return list;
             }
+        } catch (SQLException e) {
+            return memoryStore.searchSongs(query);
         }
     }
 
     public Song insert(Song s) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.insertSong(s);
+        }
         String sql = "INSERT INTO songs(title, artist, duration_seconds, file_path) VALUES(?,?,?,?)";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -51,10 +66,16 @@ public class SongDAO {
                 if (keys.next()) s.setId(keys.getInt(1));
             }
             return s;
+        } catch (SQLException e) {
+            return memoryStore.insertSong(s);
         }
     }
 
     public void update(Song s) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            memoryStore.updateSong(s);
+            return;
+        }
         String sql = "UPDATE songs SET title=?, artist=?, duration_seconds=?, file_path=? WHERE id=?";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
@@ -64,15 +85,22 @@ public class SongDAO {
             ps.setString(4, s.getFilePath());
             ps.setInt(5, s.getId());
             ps.executeUpdate();
+        } catch (SQLException e) {
+            memoryStore.updateSong(s);
         }
     }
 
     public boolean delete(int id) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.deleteSong(id);
+        }
         String sql = "DELETE FROM songs WHERE id=?";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, id);
             return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            return memoryStore.deleteSong(id);
         }
     }
 

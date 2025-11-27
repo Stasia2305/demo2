@@ -9,10 +9,15 @@ import java.util.List;
 
 /**
  * DAO for playlists and their song ordering.
+ * Falls back to in-memory storage when database is unavailable.
  */
 public class PlaylistDAO {
+    private final InMemoryStore memoryStore = InMemoryStore.getInstance();
 
     public List<Playlist> findAll() throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.getAllPlaylists();
+        }
         String sql = "SELECT id, name FROM playlists ORDER BY name COLLATE NOCASE";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql);
@@ -20,10 +25,15 @@ public class PlaylistDAO {
             List<Playlist> list = new ArrayList<>();
             while (rs.next()) list.add(new Playlist(rs.getInt("id"), rs.getString("name")));
             return list;
+        } catch (SQLException e) {
+            return memoryStore.getAllPlaylists();
         }
     }
 
     public Playlist insert(Playlist p) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.insertPlaylist(p);
+        }
         String sql = "INSERT INTO playlists(name) VALUES(?)";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -33,29 +43,45 @@ public class PlaylistDAO {
                 if (keys.next()) p.setId(keys.getInt(1));
             }
             return p;
+        } catch (SQLException e) {
+            return memoryStore.insertPlaylist(p);
         }
     }
 
     public void update(Playlist p) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            memoryStore.updatePlaylist(p);
+            return;
+        }
         String sql = "UPDATE playlists SET name=? WHERE id=?";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, p.getName());
             ps.setInt(2, p.getId());
             ps.executeUpdate();
+        } catch (SQLException e) {
+            memoryStore.updatePlaylist(p);
         }
     }
 
     public boolean delete(int playlistId) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.deletePlaylist(playlistId);
+        }
         String sql = "DELETE FROM playlists WHERE id=?";
         try (Connection c = DBManager.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, playlistId);
             return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            return memoryStore.deletePlaylist(playlistId);
         }
     }
 
     public List<Song> getSongs(int playlistId) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            return memoryStore.getPlaylistSongs(playlistId);
+        }
         String sql = "SELECT s.id, s.title, s.artist, s.duration_seconds, s.file_path " +
                 "FROM playlist_songs ps JOIN songs s ON ps.song_id = s.id " +
                 "WHERE ps.playlist_id=? ORDER BY ps.position";
@@ -74,10 +100,16 @@ public class PlaylistDAO {
                 }
                 return list;
             }
+        } catch (SQLException e) {
+            return memoryStore.getPlaylistSongs(playlistId);
         }
     }
 
     public void addSongToEnd(int playlistId, int songId) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            memoryStore.addSongToPlaylist(playlistId, songId);
+            return;
+        }
         String maxSql = "SELECT COALESCE(MAX(position), -1) FROM playlist_songs WHERE playlist_id=?";
         try (Connection c = DBManager.getConnection();
              PreparedStatement maxPs = c.prepareStatement(maxSql)) {
@@ -102,10 +134,16 @@ public class PlaylistDAO {
             } finally {
                 c.setAutoCommit(true);
             }
+        } catch (SQLException e) {
+            memoryStore.addSongToPlaylist(playlistId, songId);
         }
     }
 
     public void removeAtPosition(int playlistId, int position) throws SQLException {
+        if (!DBManager.isAvailable()) {
+            memoryStore.removeSongFromPlaylist(playlistId, position);
+            return;
+        }
         try (Connection c = DBManager.getConnection()) {
             c.setAutoCommit(false);
             try (PreparedStatement del = c.prepareStatement(
@@ -126,15 +164,22 @@ public class PlaylistDAO {
             } finally {
                 c.setAutoCommit(true);
             }
+        } catch (SQLException e) {
+            memoryStore.removeSongFromPlaylist(playlistId, position);
         }
     }
 
     public void move(int playlistId, int fromPos, int toPos) throws SQLException {
         if (fromPos == toPos) return;
+        
+        if (!DBManager.isAvailable()) {
+            memoryStore.movePlaylistSong(playlistId, fromPos, toPos);
+            return;
+        }
+        
         try (Connection c = DBManager.getConnection()) {
             c.setAutoCommit(false);
             try {
-                // Temporarily set fromPos to -1 to free the slot
                 try (PreparedStatement temp = c.prepareStatement(
                         "UPDATE playlist_songs SET position=-1 WHERE playlist_id=? AND position=?")) {
                     temp.setInt(1, playlistId);
@@ -171,6 +216,8 @@ public class PlaylistDAO {
             } finally {
                 c.setAutoCommit(true);
             }
+        } catch (SQLException e) {
+            memoryStore.movePlaylistSong(playlistId, fromPos, toPos);
         }
     }
 }
